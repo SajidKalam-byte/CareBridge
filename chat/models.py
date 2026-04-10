@@ -29,3 +29,20 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.sender}: {self.text[:30]}"
+
+
+class DoctorAIResponse(models.Model):
+    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="ai_responses")
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="doctor_ai_responses"
+    )
+    parent = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="parent_ai_responses"
+    )
+    child = models.ForeignKey("children.Child", on_delete=models.CASCADE)
+    question = models.TextField()
+    answer = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"AI response for chat {self.chat_id}"

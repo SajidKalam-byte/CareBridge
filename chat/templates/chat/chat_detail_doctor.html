@@ -73,6 +73,53 @@
     }
     .chat-input:focus { background: white; border-color: #b91c1c; }
     .send-btn { color: #b91c1c; font-size: 1.5rem; border:none; background:none; }
+
+    /* FLOATING AI HELPER */
+    .ai-float-btn {
+        position: fixed; right: 28px; bottom: 28px; z-index: 1050;
+        width: 56px; height: 56px; border-radius: 50%;
+        background: #b91c1c; color: white; border: none;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 24px rgba(185, 28, 28, 0.35);
+    }
+    .ai-panel {
+        position: fixed; right: 28px; bottom: 96px; z-index: 1050;
+        width: 360px; max-width: calc(100vw - 56px);
+        background: white; border-radius: 18px; overflow: hidden;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+        display: none; flex-direction: column;
+    }
+    .ai-panel.open { display: flex; }
+    .ai-panel-header {
+        background: #fff5f5; padding: 12px 16px; border-bottom: 1px solid #ffe1e1;
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .ai-panel-title { font-weight: 800; font-size: 0.95rem; color: #991b1b; }
+    .ai-summary {
+        padding: 12px 16px; border-bottom: 1px solid #f2f2f2;
+        background: #fffafa; font-size: 0.85rem; color: #444;
+    }
+    .ai-messages {
+        padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
+        max-height: 240px; overflow-y: auto; background: #fcfcfd;
+    }
+    .ai-msg {
+        padding: 8px 12px; border-radius: 12px; font-size: 0.85rem; line-height: 1.45;
+    }
+    .ai-msg.user { background: #f1f3f5; color: #333; align-self: flex-end; }
+    .ai-msg.assistant { background: #fee2e2; color: #7f1d1d; align-self: flex-start; }
+    .ai-input {
+        border-top: 1px solid #f2f2f2; padding: 10px 12px; display: flex; gap: 8px;
+        background: white;
+    }
+    .ai-input input {
+        flex: 1; border: 1px solid #eee; border-radius: 12px; padding: 8px 12px;
+        font-size: 0.85rem; outline: none;
+    }
+    .ai-input button {
+        border: none; background: #b91c1c; color: white; border-radius: 10px;
+        padding: 8px 12px; font-size: 0.85rem; font-weight: 700;
+    }
 </style>
 {% endblock %}
 
@@ -96,8 +143,18 @@
     <div class="ai-summary-pinned">
         <span class="ai-badge"><i class="fa-solid fa-robot me-1"></i> AI Triage Summary</span>
         <p class="summary-text" style="font-size: 0.95rem; color: #444; line-height: 1.6; margin: 0;">
-            {{ reports.0.summary|truncatechars:150 }}
+            {{ reports.0.summary|cut:"**"|cut:"*"|truncatechars:150 }}
         </p>
+        {% if reports.0.summary %}
+        <button
+            type="button"
+            class="btn btn-link btn-sm p-0 mt-2 text-danger text-decoration-none"
+            data-bs-toggle="modal"
+            data-bs-target="#chatSummaryModal"
+        >
+            View summary
+        </button>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -119,6 +176,61 @@
         </button>
     </form>
 </div>
+
+<button class="ai-float-btn" id="ai-toggle" aria-label="Open AI helper">
+    <i class="fa-solid fa-robot"></i>
+</button>
+
+<div class="ai-panel" id="ai-panel">
+    <div class="ai-panel-header">
+        <div class="ai-panel-title">AI Report Helper</div>
+        <button class="btn btn-sm btn-light" id="ai-close" type="button">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+    <div class="ai-summary">
+        <div class="fw-bold mb-1">Latest Summary</div>
+        {% if reports %}
+        <div>{{ reports.0.summary|default:"No summary available."|cut:"**"|cut:"*"|truncatechars:200 }}</div>
+        {% else %}
+        <div>No report summary available.</div>
+        {% endif %}
+    </div>
+    <div class="ai-messages" id="ai-messages">
+        {% for item in ai_responses %}
+        <div class="ai-msg user">{{ item.question }}</div>
+        <div class="ai-msg assistant">{{ item.answer }}</div>
+        {% endfor %}
+        <div class="ai-msg assistant">
+            Ask about the uploaded reports. I will only use report content.
+        </div>
+    </div>
+    <form class="ai-input" id="ai-form">
+        <input type="text" id="ai-question" placeholder="Ask about lab values, findings, dates..." autocomplete="off">
+        <button type="submit">Ask</button>
+    </form>
+</div>
+
+{% if reports and reports.0.summary %}
+<div class="modal fade" id="chatSummaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Report Summary</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2 text-muted small">
+                    {{ chat.parent.full_name|default:chat.parent.username }} • {{ chat.child.name|default:"Child" }}
+                </div>
+                <div>
+                    {{ reports.0.summary|cut:"**"|cut:"*"|linebreaksbr }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -161,5 +273,58 @@
 
     loadMessages();
     setInterval(loadMessages, 2000);
+
+    const aiToggle = document.getElementById("ai-toggle");
+    const aiPanel = document.getElementById("ai-panel");
+    const aiClose = document.getElementById("ai-close");
+    const aiForm = document.getElementById("ai-form");
+    const aiMessages = document.getElementById("ai-messages");
+    const aiQuestion = document.getElementById("ai-question");
+
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return "";
+    }
+
+    function addAiMessage(role, text) {
+        const el = document.createElement("div");
+        el.className = "ai-msg " + role;
+        el.innerText = text;
+        aiMessages.appendChild(el);
+        aiMessages.scrollTop = aiMessages.scrollHeight;
+    }
+
+    aiToggle.addEventListener("click", () => {
+        aiPanel.classList.toggle("open");
+    });
+    aiClose.addEventListener("click", () => {
+        aiPanel.classList.remove("open");
+    });
+
+    aiForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const question = aiQuestion.value.trim();
+        if (!question) return;
+        aiQuestion.value = "";
+        addAiMessage("user", question);
+
+        fetch(`/chat/${chatId}/ai-help/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: JSON.stringify({ question }),
+        })
+            .then(res => res.json())
+            .then(data => {
+                addAiMessage("assistant", data.answer || "No response.");
+            })
+            .catch(() => {
+                addAiMessage("assistant", "Unable to reach the AI helper.");
+            });
+    });
 </script>
 {% endblock %}

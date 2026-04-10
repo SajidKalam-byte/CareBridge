@@ -1,10 +1,12 @@
 from django.contrib.auth.decorators import login_required
+import json
+
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .ai import suggest_reply
+from .ai import answer_from_reports, suggest_reply
 from .forms import ChatStartForm, MessageForm
-from .models import Chat, Message
+from .models import Chat, DoctorAIResponse, Message
 from reports.models import Report
 
 
@@ -93,12 +95,14 @@ def chat_detail(request, chat_id):
     reports = chat.child.reports.order_by("-id") if chat.child else []
 
     suggestion = ""
+    ai_responses = []
     if request.user.role == "doctor":
         report_summaries = "\n".join(
             report.summary for report in reports if report.summary
         )
         last_message = messages.last().text if messages.exists() else ""
         suggestion = suggest_reply(report_summaries, last_message)
+        ai_responses = chat.ai_responses.order_by("created_at")
 
     if request.method == "POST":
         form = MessageForm(request.POST)
@@ -126,6 +130,7 @@ def chat_detail(request, chat_id):
             "form": form,
             "reports": reports,
             "suggestion": suggestion,
+            "ai_responses": ai_responses,
         },
     )
 
@@ -150,3 +155,46 @@ def fetch_messages(request, chat_id):
     ]
 
     return JsonResponse({"messages": data})
+
+
+@login_required
+def doctor_ai_help(request, chat_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    chat = get_object_or_404(Chat, id=chat_id)
+    if request.user.role != "doctor" or chat.doctor != request.user:
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        payload = {}
+
+    question = (payload.get("question") or "").strip()
+    if not question:
+        return JsonResponse({"answer": "Please enter a question."})
+
+    reports = chat.child.reports.order_by("-id") if chat.child else []
+    report_summaries = "\n".join(
+        report.summary for report in reports if report.summary
+    )
+    report_texts = "\n".join(
+        report.extracted_text for report in reports if report.extracted_text
+    )
+
+    answer = answer_from_reports(report_summaries, report_texts, question)
+    if not answer:
+        answer = "I do not have that information from the uploaded reports."
+
+    if chat.child:
+        DoctorAIResponse.objects.create(
+            chat=chat,
+            doctor=chat.doctor,
+            parent=chat.parent,
+            child=chat.child,
+            question=question,
+            answer=answer,
+        )
+
+    return JsonResponse({"answer": answer})

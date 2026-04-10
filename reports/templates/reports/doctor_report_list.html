@@ -33,7 +33,17 @@
                             </td>
                             <td>{{ report.child.name }}</td>
                             <td class="text-muted small">
-                                {{ report.summary|default:"No summary available."|truncatechars:200 }}
+                                {{ report.summary|default:"No summary available."|cut:"**"|cut:"*"|truncatechars:140 }}
+                                {% if report.summary %}
+                                <button
+                                    type="button"
+                                    class="btn btn-link btn-sm p-0 ms-2 text-danger text-decoration-none"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#summaryModal-{{ report.id }}"
+                                >
+                                    View summary
+                                </button>
+                                {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if report.file %}
@@ -45,6 +55,27 @@
                                 {% endif %}
                             </td>
                         </tr>
+
+                        {% if report.summary %}
+                        <div class="modal fade" id="summaryModal-{{ report.id }}" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-centered modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Report Summary</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-2 text-muted small">
+                                            {{ report.child.parent.full_name|default:report.child.parent.username }} • {{ report.child.name }}
+                                        </div>
+                                        <div>
+                                            {{ report.summary|cut:"**"|cut:"*"|linebreaksbr }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
                         {% empty %}
                         <tr>
                             <td colspan="4" class="text-center text-muted py-4">

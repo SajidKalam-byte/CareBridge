@@ -38,3 +38,44 @@ def suggest_reply(report_summaries, last_message):
         return response.output[0].content[0].text.strip()
     except Exception:
         return ""
+
+
+def answer_from_reports(report_summaries, report_texts, question):
+    if not question:
+        return ""
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return ""
+
+    client = OpenAI(api_key=api_key)
+    prompt = (
+        "You are a clinical helper for doctors. Answer ONLY using the provided report "
+        "summaries and report text. If the answer is not in the reports, say you do not "
+        "have that information from the uploaded reports. Keep it concise."
+    )
+    context = (
+        "Report summaries:\n"
+        f"{report_summaries}\n\n"
+        "Report text:\n"
+        f"{report_texts}\n\n"
+        "Question:\n"
+        f"{question}"
+    )
+    truncated = context[:6000]
+
+    try:
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": truncated},
+            ],
+        )
+    except Exception:
+        return ""
+
+    try:
+        return response.output[0].content[0].text.strip()
+    except Exception:
+        return ""
